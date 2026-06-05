@@ -12,14 +12,14 @@
         .tab-btn { background-color: #ecf0f1; color: #2c3e50; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; transition: 0.2s; }
         .tab-btn.active { background-color: #3498db; color: white; }
         .status { font-style: italic; color: #7f8c8d; margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-left: 4px solid #3498db; border-radius: 4px; }
-        .status.success { border-left-color: #2ecc71; }
+        .status.success { border-left-color: #2ecc71; color: #27ae60; }
         #login-screen { text-align: center; padding: 40px 20px; }
         input[type="text"], select { padding: 10px; font-size: 16px; border: 2px solid #bdc3c7; border-radius: 4px; width: 220px; margin-right: 10px; }
         button { background-color: #3498db; color: white; border: none; padding: 11px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; }
         button:hover { background-color: #2980b9; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #f8f9fa; color: #2c3e50; }
+        th { background-color: #f8f9fa; color: #2c3e50; position: sticky; top: 0; z-index: 1; }
         tr:hover { background-color: #f1f2f6; }
         .quantity { font-weight: bold; display: inline-block; width: 50px; text-align: center; font-size: 16px; }
         .btn-action { color: white; border: none; padding: 6px 14px; font-size: 14px; border-radius: 4px; cursor: pointer; font-weight: bold; margin: 0 4px; }
@@ -32,10 +32,7 @@
         .exchange-col.give { border-left-color: #e74c3c; }
         .exchange-col.receive { border-left-color: #2ecc71; }
         .badge { display: inline-block; background: #edf2f7; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: bold; margin: 4px; border: 1px solid #cbd5e0; }
-        
         .table-wrapper { max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; }
-        table { margin-top: 0; }
-        th { position: sticky; top: 0; z-index: 1; }
     </style>
 </head>
 <body>
@@ -56,7 +53,7 @@
             <button class="tab-btn" id="tab-exch" onclick="switchTab('echanges')">🤝 Zone Échanges</button>
         </div>
 
-        <div id="status-msg" class="status">🔄 Initialisation du classeur...</div>
+        <div id="status-msg" class="status">🔄 Connexion sécurisée au Google Sheet...</div>
 
         <div id="view-collection">
             <div class="table-wrapper">
@@ -103,6 +100,7 @@
     let currentUser = "";
     let cardsData = [];   
     let listePotes = [];  
+    let sheetDataGlobal = {}; // Contiendra toutes les quantités de tout le monde en direct depuis le Sheet
 
     const loginScreen = document.getElementById('login-screen');
     const appScreen = document.getElementById('app-screen');
@@ -110,8 +108,6 @@
     const tableBody = document.getElementById('table-body');
     const statusMsg = document.getElementById('status-msg');
 
-    // 🔴 METS LA LISTE DE TES CODES EXCEL ICI DIRECTEMENT 🔴
-    // Tu peux mettre autant de codes que tu veux (les 980 si nécessaire), séparés par des virgules et entre guillemets.
     const LISTE_EXCEL = [
         "FCW00", "FCW1", "FCW2", "FCW3", "FCW4", "FCW5", "FCW6", "FCW7", "FCW8", "FCW9", "FCW10", "FCW11", "FCW12", "FCW13", "FCW14", "FCW15", "FCW16", "FCW17", "FCW18", "FCW19",
         "MEX1", "MEX2", "MEX3", "MEX4", "MEX5", "MEX6", "MEX7", "MEX8", "MEX9", "MEX10", "MEX11", "MEX12", "MEX13", "MEX14", "MEX15", "MEX16", "MEX17", "MEX18", "MEX19", "MEX20",
@@ -164,14 +160,6 @@
         "PAN1", "PAN2", "PAN3", "PAN4", "PAN5", "PAN6", "PAN7", "PAN8", "PAN9", "PAN10", "PAN11", "PAN12", "PAN13", "PAN14", "PAN15", "PAN16", "PAN17", "PAN18", "PAN19", "PAN20"
     ];
 
-    function genererCartesDepuisExcel() {
-        let liste = [];
-        LISTE_EXCEL.forEach(nomCarte => {
-            liste.push({ id: nomCarte, qty: 0 });
-        });
-        return liste;
-    }
-
     function startApp() {
         const input = document.getElementById('username-input').value.trim();
         if (!input) return alert("Mets ton prénom gros !");
@@ -182,11 +170,45 @@
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Espace de ${currentUser}`;
         
-        // Génère l'appli sur la base EXACTE de ton nommage Excel
-        cardsData = genererCartesDepuisExcel();
-        
+        // Initialise la structure locale temporaire
+        cardsData = LISTE_EXCEL.map(id => ({ id: id, qty: 0 }));
         renderTable();
-        syncWithGoogle();
+        
+        // Lance le chargement JSONP en direct depuis l'Excel
+        executerAppelJSONP("charger", null, (data) => {
+            if(data && data.success) {
+                sheetDataGlobal = data.cards;
+                listePotes = data.users;
+                
+                // Met à jour les quantités affichées avec les vraies valeurs du Sheet
+                cardsData.forEach(card => {
+                    if(sheetDataGlobal[card.id] && sheetDataGlobal[card.id][currentUser] !== undefined) {
+                        card.qty = sheetDataGlobal[card.id][currentUser];
+                    }
+                });
+                
+                renderTable();
+                construireSelectPotes();
+                statusMsg.className = "status success";
+                statusMsg.innerText = "✅ Connecté à l'Excel ! Vos modifications s'enregistrent en direct.";
+            }
+        });
+    }
+
+    function executerAppelJSONP(action, cardId, callbackFonction) {
+        const callbackName = "jsonp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        window[callbackName] = function(data) {
+            callbackFonction(data);
+            document.body.removeChild(script);
+            delete window[callbackName];
+        };
+        
+        const script = document.createElement('script');
+        let url = `${SCRIPT_URL}?action=${action}&user=${encodeURIComponent(currentUser)}&callback=${callbackName}`;
+        if(cardId) url += `&cardId=${encodeURIComponent(cardId)}`;
+        
+        script.src = url;
+        document.body.appendChild(script);
     }
 
     function switchTab(tab) {
@@ -194,39 +216,12 @@
         document.getElementById('tab-exch').classList.toggle('active', tab === 'echanges');
         document.getElementById('view-collection').style.display = tab === 'collection' ? 'block' : 'none';
         document.getElementById('view-echanges').style.display = tab === 'echanges' ? 'block' : 'none';
-    }
-
-    async function syncWithGoogle() {
-        statusMsg.className = "status";
-        statusMsg.innerText = "🔄 Liaison en direct avec le Google Sheet active...";
-        
-        try {
-            await fetch(SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                body: JSON.stringify({ action: "charger", user: currentUser })
-            });
-            statusMsg.className = "status success";
-            statusMsg.innerText = "✅ Connecté au Google Sheet. Sauvegarde automatique active.";
-        } catch (e) {
-            console.log("Synchro effectuée.");
-        }
-
-        // Gestion de la liste des potes pour la zone Échange
-        let stockUsers = JSON.parse(localStorage.getItem('panini_global_users') || "[\"Valentin\", \"Jules\"]");
-        if(!stockUsers.includes(currentUser)) stockUsers.push(currentUser);
-        localStorage.setItem('panini_global_users', JSON.stringify(stockUsers));
-        listePotes = stockUsers;
-        construireSelectPotes();
+        if(tab === 'echanges') calculerEchanges();
     }
 
     function renderTable() {
         tableBody.innerHTML = '';
-
         cardsData.forEach((card) => {
-            const localQty = localStorage.getItem(`${currentUser}_${card.id}`) || 0;
-            card.qty = parseInt(localQty, 10);
-            
             const tr = document.createElement('tr');
             const minusDisabled = card.qty <= 0 ? 'disabled' : '';
             
@@ -244,38 +239,35 @@
         });
     }
 
-    window.updateCard = async function(cardId, action) {
+    window.updateCard = function(cardId, action) {
         const btnPlus = document.getElementById(`btn-plus-${cardId}`);
         const btnMinus = document.getElementById(`btn-minus-${cardId}`);
         const qtySpan = document.getElementById(`qty-${cardId}`);
         let currentQty = parseInt(qtySpan.innerText, 10) || 0;
         
         if (action === "moins" && currentQty <= 0) return;
-
-        if (action === "plus") currentQty += 1;
-        else if (action === "moins") currentQty -= 1;
-        
-        qtySpan.innerText = currentQty;
-        localStorage.setItem(`${currentUser}_${cardId}`, currentQty);
         
         btnPlus.disabled = true;
         btnMinus.disabled = true;
 
-        try {
-            await fetch(SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ cardId: cardId, user: currentUser, action: action })
-            });
-        } catch (err) { console.error(err); }
-        finally {
+        executerAppelJSONP(action, cardId, (data) => {
+            if(data && data.success) {
+                qtySpan.innerText = data.newQty;
+                let card = cardsData.find(c => c.id === cardId);
+                if(card) card.qty = data.newQty;
+                
+                // Met à jour la mémoire globale pour le comparateur
+                if(!sheetDataGlobal[cardId]) sheetDataGlobal[cardId] = {};
+                sheetDataGlobal[cardId][currentUser] = data.newQty;
+            } else {
+                alert("Erreur de synchronisation avec l'Excel.");
+            }
             btnPlus.disabled = false;
-            btnMinus.disabled = (currentQty <= 0);
-        }
+            btnMinus.disabled = (parseInt(qtySpan.innerText, 10) <= 0);
+        });
     };
 
-    function construirSelectPotes() {
+    function construireSelectPotes() {
         const select = document.getElementById('pote-select');
         select.innerHTML = '<option value="">-- Choisir un pote --</option>';
         
@@ -307,15 +299,16 @@
         let canGive = [];
         let canReceive = [];
 
-        cardsData.forEach(card => {
-            const maQty = parseInt(localStorage.getItem(`${currentUser}_${card.id}`) || 0, 10);
-            const saQty = parseInt(localStorage.getItem(`${pote}_${card.id}`) || 0, 10);
+        LISTE_EXCEL.forEach(id => {
+            const carteData = sheetDataGlobal[id] || {};
+            const maQty = carteData[currentUser] || 0;
+            const saQty = carteData[pote] || 0;
 
             if (maQty >= 2 && saQty === 0) {
-                canGive.push(`${card.id} (x${maQty - 1})`);
+                canGive.push(`${id} (x${maQty - 1})`);
             }
             if (saQty >= 2 && maQty === 0) {
-                canReceive.push(`${card.id}`);
+                canReceive.push(`${id}`);
             }
         });
 
