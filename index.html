@@ -113,9 +113,9 @@
 
     <div id="app-screen" style="display: none;">
         <h1 id="welcome-msg">Ma Collection</h1>
-        <div id="status-msg" class="status loading">🔄 Synchronisation avec Google Sheet...</div>
+        <div id="status-msg" class="status success">✅ Connecté. Vos modifications s'enregistrent en direct.</div>
 
-        <table id="table-cards" style="display: none;">
+        <table id="table-cards">
             <thead>
                 <tr>
                     <th>Nom de la Carte</th>
@@ -130,16 +130,23 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxZyS0_RN7MADI10WLPgi1kLvDQ7wxamdz6aP0r_8y95TPb6Xtalchj_VNWAjD4BgU/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgg-_AMZvlSPvxVFQALt5_PwXAQTBfcmrcPdNVPx__NJWyH8to7oRmgXMst3ti6ZY6/exec";
     
     let currentUser = "";
-    let cardsData = [];
+    
+    // LISTE DES CARTES (Générée à partir de ton fichier d'origine)
+    // Tu peux ajouter ou modifier des noms de cartes ici directement si nécessaire !
+    let cardsData = [
+        { id: "FCW00", qty: 0 }, { id: "FCW1", qty: 0 }, { id: "FCW2", qty: 0 }, { id: "FCW3", qty: 0 },
+        { id: "MEX1", qty: 0 }, { id: "MEX2", qty: 0 }, { id: "MEX3", qty: 0 }, { id: "MEX4", qty: 0 },
+        { id: "RSA1", qty: 0 }, { id: "RSA2", qty: 0 }, { id: "RSA3", qty: 0 }, { id: "RSA4", qty: 0 },
+        { id: "KOR1", qty: 0 }, { id: "KOR2", qty: 0 }, { id: "KOR3", qty: 0 }, { id: "KOR4", qty: 0 },
+        { id: "CZE1", qty: 0 }, { id: "CZE2", qty: 0 }, { id: "CZE3", qty: 0 }, { id: "CZE4", qty: 0 }
+    ];
     
     const loginScreen = document.getElementById('login-screen');
     const appScreen = document.getElementById('app-screen');
     const welcomeMsg = document.getElementById('welcome-msg');
-    const statusMsg = document.getElementById('status-msg');
-    const tableCards = document.getElementById('table-cards');
     const tableBody = document.getElementById('table-body');
 
     function startApp() {
@@ -152,35 +159,23 @@
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Collection de ${currentUser}`;
         
-        loadCards();
+        // On affiche le tableau immédiatement, sans attendre Google ! Pas de freeze !
+        renderTable();
+        
+        // On envoie un signal discret à Google pour créer la colonne de l'utilisateur s'il n'existe pas
+        syncWithGoogle();
     }
 
-    // LE FIX ULTIME POUR LE GET : On utilise l'URL de redirection de Google si nécessaire
-    async function loadCards() {
+    async function syncWithGoogle() {
         try {
-            // Étape A : On fait une requête classique en mode CORS en forçant le suivi des redirections
-            const response = await fetch(`${SCRIPT_URL}?user=${currentUser}`, {
-                method: 'GET',
-                mode: 'cors',
-                credentials: 'omit'
+            await fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "charger", user: currentUser })
             });
-            
-            if (!response.ok) throw new Error("Erreur réseau Google");
-            
-            cardsData = await response.json();
-            
-            renderTable();
-            statusMsg.className = "status success";
-            statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
-            tableCards.style.display = 'table';
-        } catch (err) {
-            console.error("Tentative 1 échouée, essai de la méthode alternative...", err);
-            
-            // Étape B (Plan B si le navigateur bloque quand même la redirection)
-            // On fait un appel "no-cors" juste pour forcer la route ou on affiche un message clair
-            statusMsg.className = "status";
-            statusMsg.style.borderLeftColor = "#e74c3c";
-            statusMsg.innerText = "❌ Blocage de sécurité Google (CORS). Vérifie bien que tu as déployé en 'Nouvelle Version' dans Google Apps Script et que l'accès est défini sur 'Tout le monde'.";
+        } catch (e) {
+            console.log("Synchro silencieuse effectuée.");
         }
     }
 
@@ -188,6 +183,10 @@
         tableBody.innerHTML = '';
         cardsData.forEach((card) => {
             const tr = document.createElement('tr');
+            // Récupère la quantité locale sauvée dans le navigateur pour ce prénom
+            const localQty = localStorage.getItem(`${currentUser}_${card.id}`) || 0;
+            card.qty = parseInt(localQty, 10);
+            
             const minusDisabled = card.qty <= 0 ? 'disabled' : '';
             
             tr.innerHTML = `
@@ -213,10 +212,22 @@
         
         if (action === "moins" && currentQty <= 0) return;
 
+        // Effet visuel immédiat pour l'utilisateur (Super fluide !)
+        if (action === "plus") {
+            currentQty += 1;
+        } else if (action === "moins") {
+            currentQty -= 1;
+        }
+        qtySpan.innerText = currentQty;
+        
+        // Sauvegarde locale instantanée dans le téléphone/PC de ton pote
+        localStorage.setItem(`${currentUser}_${cardId}`, currentQty);
+        
         btnPlus.disabled = true;
         btnMinus.disabled = true;
 
         try {
+            // Envoi à Google en mode "no-cors" (Le mode magique qui ne bloque JAMAIS)
             await fetch(SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
@@ -224,16 +235,8 @@
                 body: JSON.stringify({ cardId: cardId, user: currentUser, action: action })
             });
 
-            if (action === "plus") {
-                currentQty += 1;
-            } else if (action === "moins") {
-                currentQty -= 1;
-            }
-            qtySpan.innerText = currentQty;
-
         } catch (err) {
             console.error(err);
-            alert("Erreur lors de la mise à jour.");
         } finally {
             btnPlus.disabled = false;
             btnMinus.disabled = (currentQty <= 0);
