@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionnaire de Cartes Collaboratif</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        .status {
+            font-style: italic;
+            color: #7f8c8d;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+        }
+        .status.loading {
+            border-left-color: #f39c12;
+        }
+        .status.success {
+            border-left-color: #2ecc71;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            color: #2c3e50;
+        }
+        tr:hover {
+            background-color: #f1f2f6;
+        }
+        .quantity {
+            font-weight: bold;
+            display: inline-block;
+            width: 40px;
+            text-align: center;
+        }
+        button.btn-add {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            font-size: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        button.btn-add:hover {
+            background-color: #27ae60;
+        }
+        button.btn-add:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Ma Collection de Cartes (Collaboratif)</h1>
+    <div id="status-msg" class="status loading">🔄 Connexion au Google Sheet et chargement des cartes...</div>
+
+    <table id="table-cards" style="display: none;">
+        <thead>
+            <tr>
+                <th>Nom de la Carte</th>
+                <th>Quantité possédée</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="table-body">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    // URL de ton application Web Google Apps Script
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzyx9VRPHFdkRAU5oXmkoTteYSWMTMWBjbeQDRyBGPXURcK7jS4kfEUCwJEAa5q3sf/exec";
+    
+    let cardsData = [];
+    const statusMsg = document.getElementById('status-msg');
+    const tableCards = document.getElementById('table-cards');
+    const tableBody = document.getElementById('table-body');
+
+    // Étape 1 : Charger les données dès l'ouverture de la page
+    async function loadCards() {
+        try {
+            const response = await fetch(SCRIPT_URL);
+            if (!response.ok) throw new Error("Erreur réseau");
+            
+            cardsData = await response.json();
+            
+            renderTable();
+            statusMsg.className = "status success";
+            statusMsg.innerText = "✅ Données synchronisées en direct avec Google Sheets.";
+            tableCards.style.display = 'table';
+        } catch (err) {
+            console.error(err);
+            statusMsg.className = "status";
+            statusMsg.style.borderLeftColor = "#e74c3c";
+            statusMsg.innerText = "❌ Impossible de charger les données. Vérifie le déploiement de ton script.";
+        }
+    }
+
+    // Étape 2 : Afficher les lignes du tableau
+    function renderTable() {
+        tableBody.innerHTML = '';
+        cardsData.forEach((card, index) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${card.id}</strong></td>
+                <td><span class="quantity" id="qty-${card.id}">${card.qty}</span></td>
+                <td>
+                    <button class="btn-add" id="btn-${card.id}" onclick="incrementCard('${card.id}')">+</button>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // Étape 3 : Envoyer l'action +1 au Google Sheet
+    window.incrementCard = async function(cardId) {
+        const btn = document.getElementById(`btn-${cardId}`);
+        const qtySpan = document.getElementById(`qty-${cardId}`);
+        
+        // Désactive temporairement le bouton pendant l'enregistrement pour éviter le double-clic rapide
+        btn.disabled = true;
+        btn.innerText = "...";
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors", // Requis pour contourner les règles CORS de redirection Google Apps Script
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ cardId: cardId })
+            });
+
+            // Comme le mode "no-cors" masque la réponse JavaScript, on incrémente visuellement côté utilisateur.
+            // Le script Google reçoit bien l'information en tâche de fond et met à jour la ligne.
+            const currentQty = parseInt(qtySpan.innerText, 10) || 0;
+            qtySpan.innerText = currentQty + 1;
+
+        } catch (err) {
+            console.error("Erreur de sauvegarde:", err);
+            alert("Une erreur est survenue lors de l'enregistrement.");
+        } finally {
+            // Réactive le bouton
+            btn.disabled = false;
+            btn.innerText = "+";
+        }
+    };
+
+    // Lance le chargement au démarrage
+    loadCards();
+</script>
+
+</body>
+</html>
