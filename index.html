@@ -130,7 +130,7 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwQddV_pG4nbkW69kWBsKfTXQhJ0tg3rZsH1hXR0uUnbmjJfhtF7Xqyjcma6UlrnGur/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
     let cardsData = [];
@@ -155,34 +155,34 @@
         loadCards();
     }
 
-    // Méthode JSONP pour contourner définitivement le CORS
-    function loadCards() {
-        // On crée une balise <script> temporaire dans la page
-        const script = document.createElement('script');
-        // On lui demande d'appeler la fonction 'handleGoogleResponse' une fois les données reçues
-        script.src = `${SCRIPT_URL}?user=${currentUser}&callback=handleGoogleResponse`;
-        
-        script.onerror = function() {
+    // LE FIX ULTIME POUR LE GET : On utilise l'URL de redirection de Google si nécessaire
+    async function loadCards() {
+        try {
+            // Étape A : On fait une requête classique en mode CORS en forçant le suivi des redirections
+            const response = await fetch(`${SCRIPT_URL}?user=${currentUser}`, {
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            
+            if (!response.ok) throw new Error("Erreur réseau Google");
+            
+            cardsData = await response.json();
+            
+            renderTable();
+            statusMsg.className = "status success";
+            statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
+            tableCards.style.display = 'table';
+        } catch (err) {
+            console.error("Tentative 1 échouée, essai de la méthode alternative...", err);
+            
+            // Étape B (Plan B si le navigateur bloque quand même la redirection)
+            // On fait un appel "no-cors" juste pour forcer la route ou on affiche un message clair
             statusMsg.className = "status";
             statusMsg.style.borderLeftColor = "#e74c3c";
-            statusMsg.innerText = "❌ Erreur au chargement. Vérifie ton déploiement Google Apps Script.";
-        };
-        
-        document.body.appendChild(script);
+            statusMsg.innerText = "❌ Blocage de sécurité Google (CORS). Vérifie bien que tu as déployé en 'Nouvelle Version' dans Google Apps Script et que l'accès est défini sur 'Tout le monde'.";
+        }
     }
-
-    // Cette fonction reçoit automatiquement les données de Google sans aucune restriction CORS
-    window.handleGoogleResponse = function(data) {
-        cardsData = data;
-        renderTable();
-        statusMsg.className = "status success";
-        statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
-        tableCards.style.display = 'table';
-        
-        // Nettoyage du script temporaire
-        const scripts = document.querySelectorAll('script[src*="callback=handleGoogleResponse"]');
-        scripts.forEach(s => s.remove());
-    };
 
     function renderTable() {
         tableBody.innerHTML = '';
