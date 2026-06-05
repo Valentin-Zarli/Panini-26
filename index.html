@@ -35,12 +35,33 @@
             border-left: 4px solid #3498db;
             border-radius: 4px;
         }
-        .status.loading {
-            border-left-color: #f39c12;
+        .status.success { border-left-color: #2ecc71; }
+        .status.loading { border-left-color: #f39c12; }
+        
+        /* Écran de connexion chill */
+        #login-screen {
+            text-align: center;
+            padding: 40px 20px;
         }
-        .status.success {
-            border-left-color: #2ecc71;
+        input[type="text"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #bdc3c7;
+            border-radius: 4px;
+            width: 200px;
+            margin-right: 10px;
         }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 11px 20px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #2980b9; }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -51,90 +72,100 @@
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
-        th {
-            background-color: #f8f9fa;
-            color: #2c3e50;
-        }
-        tr:hover {
-            background-color: #f1f2f6;
-        }
-        .quantity {
-            font-weight: bold;
-            display: inline-block;
-            width: 40px;
-            text-align: center;
-        }
+        th { background-color: #f8f9fa; color: #2c3e50; }
+        tr:hover { background-color: #f1f2f6; }
+        .quantity { font-weight: bold; display: inline-block; width: 40px; text-align: center; }
+        
         button.btn-add {
             background-color: #2ecc71;
-            color: white;
-            border: none;
             padding: 6px 14px;
             font-size: 14px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s, opacity 0.2s;
         }
-        button.btn-add:hover {
-            background-color: #27ae60;
-        }
-        button.btn-add:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
+        button.btn-add:hover { background-color: #27ae60; }
+        button.btn-add:disabled { background-color: #95a5a6; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Ma Collection de Cartes (Collaboratif)</h1>
-    <div id="status-msg" class="status loading">🔄 Connexion au Google Sheet et chargement des cartes...</div>
+    <div id="login-screen">
+        <h1>👋 C'est qui ?</h1>
+        <p>Entre ton prénom pour charger ta liste personnelle de cartes :</p>
+        <input type="text" id="username-input" placeholder="Ex: Jules, Alice..." onkeypress="if(event.key === 'Enter') startApp()">
+        <button onclick="startApp()">C'est parti !</button>
+    </div>
 
-    <table id="table-cards" style="display: none;">
-        <thead>
-            <tr>
-                <th>Nom de la Carte</th>
-                <th>Quantité possédée</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="table-body">
-            </tbody>
-    </table>
+    <div id="app-screen" style="display: none;">
+        <h1 id="welcome-msg">Ma Collection</h1>
+        <div id="status-msg" class="status loading">🔄 Synchronisation avec Google Sheet...</div>
+
+        <table id="table-cards" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Nom de la Carte</th>
+                    <th>Ma Quantité</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-    // URL de ton application Web Google Apps Script
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwzyx9VRPHFdkRAU5oXmkoTteYSWMTMWBjbeQDRyBGPXURcK7jS4kfEUCwJEAa5q3sf/exec";
     
+    let currentUser = "";
     let cardsData = [];
+    
+    const loginScreen = document.getElementById('login-screen');
+    const appScreen = document.getElementById('app-screen');
+    const welcomeMsg = document.getElementById('welcome-msg');
     const statusMsg = document.getElementById('status-msg');
     const tableCards = document.getElementById('table-cards');
     const tableBody = document.getElementById('table-body');
 
-    // Étape 1 : Charger les données dès l'ouverture de la page
+    // Se déclenche quand le pote valide son prénom
+    function startApp() {
+        const input = document.getElementById('username-input').value.trim();
+        if (!input) return alert("Mets ton prénom gros !");
+        
+        // Nettoie le prénom (première lettre en majuscule)
+        currentUser = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+        
+        // Bascule d'écran
+        loginScreen.style.display = 'none';
+        appScreen.style.display = 'block';
+        welcomeMsg.innerText = `🃏 Collection de ${currentUser}`;
+        
+        loadCards();
+    }
+
+    // Charger les cartes filtrées pour CET utilisateur
     async function loadCards() {
         try {
-            const response = await fetch(SCRIPT_URL);
+            // On passe le nom de l'utilisateur dans l'URL pour que Google sache quelles quantités renvoyer
+            const response = await fetch(`${SCRIPT_URL}?user=${currentUser}`);
             if (!response.ok) throw new Error("Erreur réseau");
             
             cardsData = await response.json();
             
             renderTable();
             statusMsg.className = "status success";
-            statusMsg.innerText = "✅ Données synchronisées en direct avec Google Sheets.";
+            statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
             tableCards.style.display = 'table';
         } catch (err) {
             console.error(err);
             statusMsg.className = "status";
             statusMsg.style.borderLeftColor = "#e74c3c";
-            statusMsg.innerText = "❌ Impossible de charger les données. Vérifie le déploiement de ton script.";
+            statusMsg.innerText = "❌ Erreur au chargement. As-tu bien mis à jour le déploiement sur Google Apps Script ?";
         }
     }
 
-    // Étape 2 : Afficher les lignes du tableau
     function renderTable() {
         tableBody.innerHTML = '';
-        cardsData.forEach((card, index) => {
+        cardsData.forEach((card) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${card.id}</strong></td>
@@ -147,42 +178,33 @@
         });
     }
 
-    // Étape 3 : Envoyer l'action +1 au Google Sheet
+    // Envoyer le +1 avec le nom de l'utilisateur
     window.incrementCard = async function(cardId) {
         const btn = document.getElementById(`btn-${cardId}`);
         const qtySpan = document.getElementById(`qty-${cardId}`);
         
-        // Désactive temporairement le bouton pendant l'enregistrement pour éviter le double-clic rapide
         btn.disabled = true;
         btn.innerText = "...";
 
         try {
-            const response = await fetch(SCRIPT_URL, {
+            await fetch(SCRIPT_URL, {
                 method: "POST",
-                mode: "no-cors", // Requis pour contourner les règles CORS de redirection Google Apps Script
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ cardId: cardId })
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cardId: cardId, user: currentUser }) // On envoie le prénom ici !
             });
 
-            // Comme le mode "no-cors" masque la réponse JavaScript, on incrémente visuellement côté utilisateur.
-            // Le script Google reçoit bien l'information en tâche de fond et met à jour la ligne.
             const currentQty = parseInt(qtySpan.innerText, 10) || 0;
             qtySpan.innerText = currentQty + 1;
 
         } catch (err) {
-            console.error("Erreur de sauvegarde:", err);
-            alert("Une erreur est survenue lors de l'enregistrement.");
+            console.error(err);
+            alert("Erreur de sauvegarde.");
         } finally {
-            // Réactive le bouton
             btn.disabled = false;
             btn.innerText = "+";
         }
     };
-
-    // Lance le chargement au démarrage
-    loadCards();
 </script>
 
 </body>
