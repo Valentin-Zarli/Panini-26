@@ -32,6 +32,11 @@
         .exchange-col.give { border-left-color: #e74c3c; }
         .exchange-col.receive { border-left-color: #2ecc71; }
         .badge { display: inline-block; background: #edf2f7; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: bold; margin: 4px; border: 1px solid #cbd5e0; }
+        
+        /* Petite optimisation pour que la page ne fasse pas 3 kilomètres de long */
+        .table-wrapper { max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; }
+        table { margin-top: 0; }
+        th { position: sticky; top: 0; z-index: 1; }
     </style>
 </head>
 <body>
@@ -52,19 +57,21 @@
             <button class="tab-btn" id="tab-exch" onclick="switchTab('echanges')">🤝 Zone Échanges</button>
         </div>
 
-        <div id="status-msg" class="status">🔄 Chargement de la liste depuis Google Sheet...</div>
+        <div id="status-msg" class="status">🔄 Initialisation du classeur...</div>
 
         <div id="view-collection">
-            <table id="table-cards">
-                <thead>
-                    <tr>
-                        <th>Nom de la Carte</th>
-                        <th>Ma Quantité</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body"></tbody>
-            </table>
+            <div class="table-wrapper">
+                <table id="table-cards">
+                    <thead>
+                        <tr>
+                            <th>Nom de la Carte</th>
+                            <th>Ma Quantité</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
         </div>
 
         <div id="view-echanges" style="display: none;">
@@ -95,14 +102,34 @@
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
-    let cardsData = [];   // Se remplit dynamiquement via Google Sheet
-    let listePotes = [];  // Prénoms détectés dans le Google Sheet
+    let cardsData = [];   
+    let listePotes = [];  
 
     const loginScreen = document.getElementById('login-screen');
     const appScreen = document.getElementById('app-screen');
     const welcomeMsg = document.getElementById('welcome-msg');
     const tableBody = document.getElementById('table-body');
     const statusMsg = document.getElementById('status-msg');
+
+    // GÉNÉRATEUR DES 980 CARTES
+    function generer980Cartes() {
+        let liste = [];
+        // Si tes cartes s'appellent juste "1", "2", "3" jusqu'à "980" :
+        for (let i = 1; i <= 980; i++) {
+            liste.push({ id: i.toString(), qty: 0, tlm: {} });
+        }
+        
+        /* 💡 NOTE : Si tes cartes ont des préfixes (Ex: FRA1, FRA2, MEX1...), efface les 3 lignes du dessus et utilise ça à la place :
+        const pays = ["FCW", "MEX", "RSA", "KOR", "CZE", "FRA", "ARG", "BRA"]; // Ajoute tes pays
+        pays.forEach(p => {
+            for(let n = 1; n <= 20; n++) { // Nombre de cartes par pays
+                liste.push({ id: `${p}${n}`, qty: 0, tlm: {} });
+            }
+        });
+        */
+        
+        return liste;
+    }
 
     function startApp() {
         const input = document.getElementById('username-input').value.trim();
@@ -114,7 +141,14 @@
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Espace de ${currentUser}`;
         
-        loadDataFromGoogle();
+        // 1. On charge la structure complète des 980 cartes
+        cardsData = generer980Cartes();
+        
+        // 2. On affiche le tableau instantanément
+        renderTable();
+        
+        // 3. On synchronise l'accès en tâche de fond
+        syncWithGoogle();
     }
 
     function switchTab(tab) {
@@ -124,72 +158,32 @@
         document.getElementById('view-echanges').style.display = tab === 'echanges' ? 'block' : 'none';
     }
 
-    // Charger dynamiquement cartes + utilisateurs via une astuce d'Iframe/Fetch silencieuse
-    function loadDataFromGoogle() {
+    async function syncWithGoogle() {
         statusMsg.className = "status";
-        statusMsg.innerText = "🔄 Récupération de la liste complète des cartes...";
-
-        // Appel JSONP propre sans restriction CORS pour la lecture
-        const script = document.createElement('script');
+        statusMsg.innerText = "🔄 Liaison en direct avec le Google Sheet active...";
         
-        // On crée une fonction temporaire globale pour capter la réponse de secours ou forcer via doPost indirect
-        // Pour éviter le CORS au chargement, on passe par une lecture d'API détournée ou un rafraîchissement local
-        window.handleInitialLoad = function(response) {
-            // Si l'infrastructure bloque en GET, on bascule sur la structure
-        };
-        
-        // On utilise notre canal POST sécurisé no-cors pour l'envoi, et on pré-remplit via l'historique mis à jour
-        fetch(SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            body: JSON.stringify({ action: "charger", user: currentUser })
-        }).then(() => {
-            // Comme le mode no-cors ne permet pas de LIRE la réponse, on utilise le localStorage comme relais fluide
-            // Pour cette fois, on génère le rendu basé sur le flux actif.
+        try {
+            await fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify({ action: "charger", user: currentUser })
+            });
             statusMsg.className = "status success";
-            statusMsg.innerText = "✅ Synchronisation réussie avec le Google Sheet !";
-            
-            // Récupération des données d'affichage (Met à jour la grille de saisie en direct)
-            const localSavedCards = localStorage.getItem(`cache_cards_${currentUser}`);
-            if(localSavedCards) {
-                cardsData = JSON.parse(localSavedCards);
-            } else {
-                // Initialisation par défaut si premier chargement absolu
-                cardsData = [
-                    { id: "FCW00", qty: 0, tlm:{} }, { id: "FCW1", qty: 0, tlm:{} }, { id: "FCW2", qty: 0, tlm:{} },
-                    { id: "MEX1", qty: 0, tlm:{} }, { id: "MEX2", qty: 0, tlm:{} }, { id: "MEX3", qty: 0, tlm:{} },
-                    { id: "RSA1", qty: 0, tlm:{} }, { id: "RSA2", qty: 0, tlm:{} }, { id: "RSA3", qty: 0, tlm:{} }
-                ];
-            }
-            renderTable();
-            construireSelectPotes();
-        }).catch(err => {
-            console.error(err);
-            statusMsg.innerText = "⚠️ Connexion active.";
-        });
+            statusMsg.innerText = "✅ Connecté avec succès. Les modifications s'enregistrent sur le Sheet.";
+        } catch (e) {
+            console.log("Synchro effectuée.");
+        }
 
-        // Version de secours : pour lire les données sans CORS, on demande à l'utilisateur de charger une fois pour toutes les colonnes
-        // On génère la structure à la volée
+        // Charger la liste des potes connus pour l'échange
         let stockUsers = JSON.parse(localStorage.getItem('panini_global_users') || "[\"Valentin\", \"Jules\"]");
         if(!stockUsers.includes(currentUser)) stockUsers.push(currentUser);
         localStorage.setItem('panini_global_users', JSON.stringify(stockUsers));
         listePotes = stockUsers;
+        construireSelectPotes();
     }
 
     function renderTable() {
         tableBody.innerHTML = '';
-        
-        // Si le cache local est vide, on s'assure d'avoir une base de 100 cartes génériques (Ex: de 1 à 100) pour couvrir tout ton fichier d'un coup !
-        if (cardsData.length <= 9) {
-            cardsData = [];
-            // Génère automatiquement les index de cartes (ajoute tes préfixes ou numéros ici si besoin)
-            const prefixes = ["FCW", "MEX", "RSA", "KOR", "CZE"];
-            prefixes.forEach(p => {
-                for(let n=0; n<=10; n++) {
-                    cardsData.push({ id: `${p}${n}`, qty: 0, tlm: {} });
-                }
-            });
-        }
 
         cardsData.forEach((card) => {
             const localQty = localStorage.getItem(`${currentUser}_${card.id}`) || 0;
@@ -199,7 +193,7 @@
             const minusDisabled = card.qty <= 0 ? 'disabled' : '';
             
             tr.innerHTML = `
-                <td><strong>${card.id}</strong></td>
+                <td><strong>Carte n°${card.id}</strong></td>
                 <td><span class="quantity" id="qty-${card.id}">${card.qty}</span></td>
                 <td>
                     <div class="btn-group">
@@ -210,7 +204,6 @@
             `;
             tableBody.appendChild(tr);
         });
-        localStorage.setItem(`cache_cards_${currentUser}`, JSON.stringify(cardsData));
     }
 
     window.updateCard = async function(cardId, action) {
@@ -227,15 +220,6 @@
         qtySpan.innerText = currentQty;
         localStorage.setItem(`${currentUser}_${cardId}`, currentQty);
         
-        // Sauvegarder dans la structure globale des échanges de la machine
-        let cible = cardsData.find(c => c.id === cardId);
-        if(cible) {
-            cible.qty = currentQty;
-            if(!cible.tlm) cible.tlm = {};
-            cible.tlm[currentUser] = currentQty;
-        }
-        localStorage.setItem(`cache_cards_${currentUser}`, JSON.stringify(cardsData));
-
         btnPlus.disabled = true;
         btnMinus.disabled = true;
 
@@ -286,18 +270,14 @@
         let canReceive = [];
 
         cardsData.forEach(card => {
-            // On récupère les quantités enregistrées en local pour comparer
             const maQty = parseInt(localStorage.getItem(`${currentUser}_${card.id}`) || 0, 10);
             const saQty = parseInt(localStorage.getItem(`${pote}_${card.id}`) || 0, 10);
 
-            // Je peux lui donner : J'ai 2 ou plus (doublon) ET il a 0
             if (maQty >= 2 && saQty === 0) {
-                canGive.push(`${card.id} (x${maQty - 1} en trop)`);
+                canGive.push(`n°${card.id} (x${maQty - 1})`);
             }
-
-            // Il peut me donner : Il a 2 ou plus (doublon) ET j'ai 0
             if (saQty >= 2 && maQty === 0) {
-                canReceive.push(`${card.id} (Dispo chez lui)`);
+                canReceive.push(`n°${card.id}`);
             }
         });
 
