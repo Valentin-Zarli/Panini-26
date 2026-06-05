@@ -130,7 +130,6 @@
 </div>
 
 <script>
-    // Note : Ton URL a été conservée
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
@@ -156,36 +155,34 @@
         loadCards();
     }
 
-    // FONCTION MISE À JOUR POUR ÉVITER LE BLOCAGE CORS
-    async function loadCards() {
-        try {
-            const response = await fetch(`${SCRIPT_URL}?user=${currentUser}`);
-            if (!response.ok) throw new Error("Erreur réseau");
-            
-            // On récupère la réponse sous forme de texte brut
-            const rawText = await response.text();
-            
-            // Si Google encapsule la réponse dans du HTML, on extrait uniquement le texte JSON propre
-            let cleanJson = rawText;
-            if (rawText.includes("<body>") || rawText.includes("<div>")) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(rawText, 'text/html');
-                cleanJson = doc.body.textContent || doc.body.innerText;
-            }
-            
-            cardsData = JSON.parse(cleanJson.trim());
-            
-            renderTable();
-            statusMsg.className = "status success";
-            statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
-            tableCards.style.display = 'table';
-        } catch (err) {
-            console.error(err);
+    // Méthode JSONP pour contourner définitivement le CORS
+    function loadCards() {
+        // On crée une balise <script> temporaire dans la page
+        const script = document.createElement('script');
+        // On lui demande d'appeler la fonction 'handleGoogleResponse' une fois les données reçues
+        script.src = `${SCRIPT_URL}?user=${currentUser}&callback=handleGoogleResponse`;
+        
+        script.onerror = function() {
             statusMsg.className = "status";
             statusMsg.style.borderLeftColor = "#e74c3c";
-            statusMsg.innerText = "❌ Erreur au chargement. Vérifie que la fonction doGet est bien enregistrée et déployée en 'Nouvelle Version' dans Google Apps Script.";
-        }
+            statusMsg.innerText = "❌ Erreur au chargement. Vérifie ton déploiement Google Apps Script.";
+        };
+        
+        document.body.appendChild(script);
     }
+
+    // Cette fonction reçoit automatiquement les données de Google sans aucune restriction CORS
+    window.handleGoogleResponse = function(data) {
+        cardsData = data;
+        renderTable();
+        statusMsg.className = "status success";
+        statusMsg.innerText = `✅ Connecté en tant que ${currentUser}. Tes modifications s'enregistrent en direct.`;
+        tableCards.style.display = 'table';
+        
+        // Nettoyage du script temporaire
+        const scripts = document.querySelectorAll('script[src*="callback=handleGoogleResponse"]');
+        scripts.forEach(s => s.remove());
+    };
 
     function renderTable() {
         tableBody.innerHTML = '';
