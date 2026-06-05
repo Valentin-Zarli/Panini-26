@@ -130,12 +130,12 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgg-_AMZvlSPvxVFQALt5_PwXAQTBfcmrcPdNVPx__NJWyH8to7oRmgXMst3ti6ZY6/exec";
+    // FIX DE L'URL : Remplacement par l'URL active qui correspond à ton script Google
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
     
-    // LISTE DES CARTES (Générée à partir de ton fichier d'origine)
-    // Tu peux ajouter ou modifier des noms de cartes ici directement si nécessaire !
+    // Base de données locale de tes cartes (générée à partir de ton fichier Excel)
     let cardsData = [
         { id: "FCW00", qty: 0 }, { id: "FCW1", qty: 0 }, { id: "FCW2", qty: 0 }, { id: "FCW3", qty: 0 },
         { id: "MEX1", qty: 0 }, { id: "MEX2", qty: 0 }, { id: "MEX3", qty: 0 }, { id: "MEX4", qty: 0 },
@@ -159,10 +159,7 @@
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Collection de ${currentUser}`;
         
-        // On affiche le tableau immédiatement, sans attendre Google ! Pas de freeze !
         renderTable();
-        
-        // On envoie un signal discret à Google pour créer la colonne de l'utilisateur s'il n'existe pas
         syncWithGoogle();
     }
 
@@ -175,7 +172,7 @@
                 body: JSON.stringify({ action: "charger", user: currentUser })
             });
         } catch (e) {
-            console.log("Synchro silencieuse effectuée.");
+            console.log("Synchro initiale effectuée.");
         }
     }
 
@@ -183,7 +180,6 @@
         tableBody.innerHTML = '';
         cardsData.forEach((card) => {
             const tr = document.createElement('tr');
-            // Récupère la quantité locale sauvée dans le navigateur pour ce prénom
             const localQty = localStorage.getItem(`${currentUser}_${card.id}`) || 0;
             card.qty = parseInt(localQty, 10);
             
@@ -212,7 +208,6 @@
         
         if (action === "moins" && currentQty <= 0) return;
 
-        // Effet visuel immédiat pour l'utilisateur (Super fluide !)
         if (action === "plus") {
             currentQty += 1;
         } else if (action === "moins") {
@@ -220,21 +215,18 @@
         }
         qtySpan.innerText = currentQty;
         
-        // Sauvegarde locale instantanée dans le téléphone/PC de ton pote
         localStorage.setItem(`${currentUser}_${cardId}`, currentQty);
         
         btnPlus.disabled = true;
         btnMinus.disabled = true;
 
         try {
-            // Envoi à Google en mode "no-cors" (Le mode magique qui ne bloque JAMAIS)
             await fetch(SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ cardId: cardId, user: currentUser, action: action })
             });
-
         } catch (err) {
             console.error(err);
         } finally {
