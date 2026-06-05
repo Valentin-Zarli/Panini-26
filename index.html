@@ -38,7 +38,6 @@
         .status.success { border-left-color: #2ecc71; }
         .status.loading { border-left-color: #f39c12; }
         
-        /* Écran de connexion chill */
         #login-screen {
             text-align: center;
             padding: 40px 20px;
@@ -74,15 +73,32 @@
         }
         th { background-color: #f8f9fa; color: #2c3e50; }
         tr:hover { background-color: #f1f2f6; }
-        .quantity { font-weight: bold; display: inline-block; width: 40px; text-align: center; }
+        .quantity { font-weight: bold; display: inline-block; width: 50px; text-align: center; font-size: 16px; }
         
-        button.btn-add {
-            background-color: #2ecc71;
+        .btn-action {
+            color: white;
+            border: none;
             padding: 6px 14px;
             font-size: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            margin: 0 4px;
         }
-        button.btn-add:hover { background-color: #27ae60; }
-        button.btn-add:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        .btn-minus { background-color: #e74c3c; }
+        .btn-minus:hover { background-color: #c0392b; }
+        .btn-plus { background-color: #2ecc71; }
+        .btn-plus:hover { background-color: #27ae60; }
+        
+        .btn-action:disabled {
+            background-color: #bdc3c7 !important;
+            cursor: not-allowed;
+        }
+        .btn-group {
+            display: flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -104,7 +120,7 @@
                 <tr>
                     <th>Nom de la Carte</th>
                     <th>Ma Quantité</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="table-body">
@@ -114,7 +130,7 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzp-eynOx7WVACkO1Utzu1nzMQX0-d2n-zM6zloXJdJkP3ftVsS1QrZi0Gm5KUDlznw/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHKZsuNun46S4rXxszOOsn1OomPxww2OQUzWDroF2UAMpCrCqEbFwMpsigOadfKgho/exec";
     
     let currentUser = "";
     let cardsData = [];
@@ -126,15 +142,12 @@
     const tableCards = document.getElementById('table-cards');
     const tableBody = document.getElementById('table-body');
 
-    // Se déclenche quand le pote valide son prénom
     function startApp() {
         const input = document.getElementById('username-input').value.trim();
         if (!input) return alert("Mets ton prénom gros !");
         
-        // Nettoie le prénom (première lettre en majuscule)
         currentUser = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
         
-        // Bascule d'écran
         loginScreen.style.display = 'none';
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Collection de ${currentUser}`;
@@ -142,10 +155,8 @@
         loadCards();
     }
 
-    // Charger les cartes filtrées pour CET utilisateur
     async function loadCards() {
         try {
-            // On passe le nom de l'utilisateur dans l'URL pour que Google sache quelles quantités renvoyer
             const response = await fetch(`${SCRIPT_URL}?user=${currentUser}`);
             if (!response.ok) throw new Error("Erreur réseau");
             
@@ -159,7 +170,7 @@
             console.error(err);
             statusMsg.className = "status";
             statusMsg.style.borderLeftColor = "#e74c3c";
-            statusMsg.innerText = "❌ Erreur au chargement. As-tu bien mis à jour le déploiement sur Google Apps Script ?";
+            statusMsg.innerText = "❌ Erreur au chargement.";
         }
     }
 
@@ -167,42 +178,62 @@
         tableBody.innerHTML = '';
         cardsData.forEach((card) => {
             const tr = document.createElement('tr');
+            // Si la quantité est à 0, on désactive le bouton moins de base
+            const minusDisabled = card.qty <= 0 ? 'disabled' : '';
+            
             tr.innerHTML = `
                 <td><strong>${card.id}</strong></td>
                 <td><span class="quantity" id="qty-${card.id}">${card.qty}</span></td>
                 <td>
-                    <button class="btn-add" id="btn-${card.id}" onclick="incrementCard('${card.id}')">+</button>
+                    <div class="btn-group">
+                        <button class="btn-action btn-minus" id="btn-minus-${card.id}" ${minusDisabled} onclick="updateCard('${card.id}', 'moins')">-</button>
+                        <button class="btn-action btn-plus" id="btn-plus-${card.id}" onclick="updateCard('${card.id}', 'plus')">+</button>
+                    </div>
                 </td>
             `;
             tableBody.appendChild(tr);
         });
     }
 
-    // Envoyer le +1 avec le nom de l'utilisateur
-    window.incrementCard = async function(cardId) {
-        const btn = document.getElementById(`btn-${cardId}`);
+    // Gestion unifiée du + et du -
+    window.updateCard = async function(cardId, action) {
+        const btnPlus = document.getElementById(`btn-plus-${cardId}`);
+        const btnMinus = document.getElementById(`btn-minus-${cardId}`);
         const qtySpan = document.getElementById(`qty-${cardId}`);
         
-        btn.disabled = true;
-        btn.innerText = "...";
+        let currentQty = parseInt(qtySpan.innerText, 10) || 0;
+        
+        // Sécurité visuelle : ne rien faire si on veut faire "moins" sur un score à 0
+        if (action === "moins" && currentQty <= 0) return;
+
+        // Désactive les boutons pendant l'envoi
+        btnPlus.disabled = true;
+        btnMinus.disabled = true;
 
         try {
             await fetch(SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ cardId: cardId, user: currentUser }) // On envoie le prénom ici !
+                body: JSON.stringify({ cardId: cardId, user: currentUser, action: action })
             });
 
-            const currentQty = parseInt(qtySpan.innerText, 10) || 0;
-            qtySpan.innerText = currentQty + 1;
+            // Mise à jour visuelle locale
+            if (action === "plus") {
+                currentQty += 1;
+            } else if (action === "moins") {
+                currentQty -= 1;
+            }
+            qtySpan.innerText = currentQty;
 
         } catch (err) {
             console.error(err);
-            alert("Erreur de sauvegarde.");
+            alert("Erreur lors de la mise à jour.");
         } finally {
-            btn.disabled = false;
-            btn.innerText = "+";
+            // Réactivation intelligente des boutons
+            btnPlus.disabled = false;
+            // On ne réactive le bouton moins que si la quantité est supérieure à 0
+            btnMinus.disabled = (currentQty <= 0);
         }
     };
 </script>
