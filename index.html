@@ -14,10 +14,9 @@
         .status { font-style: italic; color: #7f8c8d; margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-left: 4px solid #3498db; border-radius: 4px; }
         .status.success { border-left-color: #2ecc71; color: #27ae60; }
         
-        /* 📊 Style du Tableau de Bord des Stats */
         .stats-dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
         @media(min-width: 500px) { .stats-dashboard { grid-template-columns: repeat(4, 1fr); } }
-        .stat-card { background: #f8f9fa; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .stat-card { background: #f8f9fa; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; text-align: center; }
         .stat-card .num { font-size: 22px; font-weight: bold; color: #2c3e50; display: block; margin-top: 4px; }
         .stat-card.pct .num { color: #2ecc71; }
         .stat-card.manquantes .num { color: #e74c3c; }
@@ -35,12 +34,29 @@
         .btn-minus { background-color: #e74c3c; }
         .btn-plus { background-color: #2ecc71; }
         .btn-action:disabled { background-color: #bdc3c7 !important; cursor: not-allowed; }
+        
         .exchange-box { background: #f8f9fa; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-top: 15px; }
         .exchange-list { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 10px; }
         .exchange-col { background: white; padding: 15px; border-radius: 4px; border-left: 4px solid #3498db; }
         .exchange-col.give { border-left-color: #e74c3c; }
         .exchange-col.receive { border-left-color: #2ecc71; }
-        .badge { display: inline-block; background: #edf2f7; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: bold; margin: 4px; border: 1px solid #cbd5e0; }
+        
+        .exch-item { display: flex; align-items: center; gap: 8px; background: #f1f2f6; padding: 6px 12px; margin: 6px 0; border-radius: 4px; font-weight: bold; font-size: 15px; }
+        .exch-item input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+        
+        .btn-valider-echange { width: 100%; padding: 15px; font-size: 18px; font-weight: bold; background-color: #e67e22; border-radius: 6px; margin-top: 20px; color: white; border: none; cursor: pointer; }
+        .btn-valider-echange:hover { background-color: #d35400; }
+        .btn-valider-echange:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+
+        /* 📑 Boites de demandes en attente */
+        .pending-container { margin-top: 30px; border-top: 2px dashed #bdc3c7; padding-top: 20px; }
+        .pending-card { background: #fffdf5; border: 1px solid #f1c40f; padding: 15px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .pending-card h5 { margin: 0 0 10px 0; font-size: 16px; color: #d35400; }
+        .pending-details { font-size: 14px; margin-bottom: 10px; line-height: 1.4; }
+        .pending-actions { display: flex; gap: 10px; }
+        .btn-accept { background-color: #2ecc71; padding: 8px 15px; font-size: 14px; color: white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; }
+        .btn-refuse { background-color: #e74c3c; padding: 8px 15px; font-size: 14px; color: white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; }
+
         .table-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; }
     </style>
 </head>
@@ -100,22 +116,34 @@
 
         <div id="view-echanges" style="display: none;">
             <h3>Comparateur d'échanges automatique</h3>
-            <p>Choisis un pote pour voir vos correspondances de doublons :</p>
+            <p>Choisis un pote pour lui proposer un deal :</p>
             <select id="pote-select" onchange="calculerEchanges()">
                 <option value="">-- Choisir un pote --</option>
             </select>
 
             <div id="resultat-echange" class="exchange-box" style="display: none;">
                 <h4 id="titre-echange">Match d'échange</h4>
+                
                 <div class="exchange-list">
                     <div class="exchange-col give">
-                        <h5>🎁 Ce que je peux lui DONNER (Mes doubles) :</h5>
+                        <h5>🎁 Je lui DONNE :</h5>
                         <div id="liste-a-donner"></div>
                     </div>
                     <div class="exchange-col receive">
-                        <h5>🎯 Ce qu'il peut me DONNER (Ses doubles) :</h5>
+                        <h5>🎯 Il me DONNE :</h5>
                         <div id="liste-a-recevoir"></div>
                     </div>
+                </div>
+
+                <button id="btn-soumettre-echange" class="btn-valider-echange" disabled onclick="proposerEchangeAttente()">
+                    📩 Envoyer la proposition d'échange
+                </button>
+            </div>
+
+            <div class="pending-container">
+                <h4>📥 Propositions d'échanges en attente</h4>
+                <div id="liste-en-attente">
+                    <p style="color: gray; font-style: italic;">Aucun échange en attente pour le moment.</p>
                 </div>
             </div>
         </div>
@@ -129,6 +157,7 @@
     let cardsData = [];   
     let listePotes = [];  
     let sheetDataGlobal = {};
+    let echangesEnAttenteGlobal = [];
 
     const loginScreen = document.getElementById('login-screen');
     const appScreen = document.getElementById('app-screen');
@@ -193,18 +222,24 @@
         if (!input) return alert("Mets ton prénom gros !");
         
         currentUser = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
-        
         loginScreen.style.display = 'none';
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Espace de ${currentUser}`;
         
         cardsData = LISTE_EXCEL.map(id => ({ id: id, qty: 0 }));
         renderTable();
+        chargerDonneesDepuisExcel();
+    }
+
+    function chargerDonneesDepuisExcel() {
+        statusMsg.className = "status";
+        statusMsg.innerText = "🔄 Actualisation des classeurs en direct...";
         
         executerAppelJSONP("charger", null, (data) => {
             if(data && data.success) {
                 sheetDataGlobal = data.cards;
                 listePotes = data.users;
+                echangesEnAttenteGlobal = data.echanges || [];
                 
                 cardsData.forEach(card => {
                     if(sheetDataGlobal[card.id] && sheetDataGlobal[card.id][currentUser] !== undefined) {
@@ -214,13 +249,19 @@
                 
                 renderTable();
                 construireSelectPotes();
+                afficherDemandesEnAttente();
+                
                 statusMsg.className = "status success";
-                statusMsg.innerText = "✅ Connecté à l'Excel ! Vos modifications s'enregistrent en direct.";
+                statusMsg.innerText = "✅ Données synchronisées avec l'Excel !";
+                
+                if (document.getElementById('view-echanges').style.display === 'block') {
+                    calculerEchanges();
+                }
             }
         });
     }
 
-    function executerAppelJSONP(action, cardId, callbackFonction) {
+    function executerAppelJSONP(action, cardId, callbackFonction, extraParams = "") {
         const callbackName = "jsonp_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
         window[callbackName] = function(data) {
             callbackFonction(data);
@@ -229,7 +270,7 @@
         };
         
         const script = document.createElement('script');
-        let url = `${SCRIPT_URL}?action=${action}&user=${encodeURIComponent(currentUser)}&callback=${callbackName}`;
+        let url = `${SCRIPT_URL}?action=${action}&user=${encodeURIComponent(currentUser)}&callback=${callbackName}${extraParams}`;
         if(cardId) url += `&cardId=${encodeURIComponent(cardId)}`;
         
         script.src = url;
@@ -241,34 +282,24 @@
         document.getElementById('tab-exch').classList.toggle('active', tab === 'echanges');
         document.getElementById('view-collection').style.display = tab === 'collection' ? 'block' : 'none';
         document.getElementById('view-echanges').style.display = tab === 'echanges' ? 'block' : 'none';
-        if(tab === 'echanges') calculerEchanges();
+        if(tab === 'echanges') chargerDonneesDepuisExcel();
     }
 
     function mettreAJourStatistiques() {
-        let totalUniquesPossedees = 0; 
-        let totalToutesCartes = 0;       
-        let totalDoubles = 0;
-        let totalManquantes = 0;
+        let totalUniquesPossedees = 0, totalToutesCartes = 0, totalDoubles = 0, totalManquantes = 0;
         const nombreTotalDeCartesDuClasseur = LISTE_EXCEL.length;
 
         cardsData.forEach(card => {
             if (card.qty > 0) {
                 totalUniquesPossedees++;
                 totalToutesCartes += card.qty;
-                if (card.qty > 1) {
-                    totalDoubles += (card.qty - 1);
-                }
+                if (card.qty > 1) totalDoubles += (card.qty - 1);
             } else {
                 totalManquantes++;
             }
         });
 
-        let pourcentageRemplissage = 0;
-        if (nombreTotalDeCartesDuClasseur > 0) {
-            pourcentageRemplissage = Math.round((totalUniquesPossedees / nombreTotalDeCartesDuClasseur) * 100);
-        }
-
-        // Rendu dans l'interface HTML
+        let pourcentageRemplissage = nombreTotalDeCartesDuClasseur > 0 ? Math.round((totalUniquesPossedees / nombreTotalDeCartesDuClasseur) * 100) : 0;
         document.getElementById('stat-total-possedees').innerText = `${totalUniquesPossedees} / ${nombreTotalDeCartesDuClasseur}`;
         document.getElementById('stat-manquantes').innerText = totalManquantes;
         document.getElementById('stat-doubles').innerText = totalDoubles;
@@ -277,14 +308,11 @@
 
     function renderTable() {
         tableBody.innerHTML = '';
-        
-        // Relance le calcul des statistiques globales
         mettreAJourStatistiques();
 
         cardsData.forEach((card) => {
             const tr = document.createElement('tr');
             const minusDisabled = card.qty <= 0 ? 'disabled' : '';
-            
             tr.innerHTML = `
                 <td><strong>${card.id}</strong></td>
                 <td><span class="quantity" id="qty-${card.id}">${card.qty}</span></td>
@@ -306,31 +334,16 @@
         let currentQty = parseInt(qtySpan.innerText, 10) || 0;
         
         if (action === "moins" && currentQty <= 0) return;
-        
-        btnPlus.disabled = true;
-        btnMinus.disabled = true;
-
-        // Débloque en cas de lenteur Google
-        const timeoutSecurite = setTimeout(() => {
-            btnPlus.disabled = false;
-            btnMinus.disabled = (parseInt(qtySpan.innerText, 10) <= 0);
-        }, 4000);
+        btnPlus.disabled = true; btnMinus.disabled = true;
 
         executerAppelJSONP(action, cardId, (data) => {
-            clearTimeout(timeoutSecurite);
-            
             if(data && data.success) {
                 qtySpan.innerText = data.newQty;
                 let card = cardsData.find(c => c.id === cardId);
                 if(card) card.qty = data.newQty;
-                
                 if(!sheetDataGlobal[cardId]) sheetDataGlobal[cardId] = {};
                 sheetDataGlobal[cardId][currentUser] = data.newQty;
-                
-                // Recalcul instantané des compteurs
                 mettreAJourStatistiques();
-            } else {
-                alert("Erreur de synchronisation.");
             }
             btnPlus.disabled = false;
             btnMinus.disabled = (parseInt(qtySpan.innerText, 10) <= 0);
@@ -339,13 +352,13 @@
 
     function construireSelectPotes() {
         const select = document.getElementById('pote-select');
+        const currentSelection = select.value;
         select.innerHTML = '<option value="">-- Choisir un pote --</option>';
-        
         listePotes.forEach(u => {
             if (u !== currentUser) {
                 const opt = document.createElement('option');
-                opt.value = u;
-                opt.innerText = u;
+                opt.value = u; opt.innerText = u;
+                if(u === currentSelection) opt.selected = true;
                 select.appendChild(opt);
             }
         });
@@ -357,38 +370,140 @@
         const divDonner = document.getElementById('liste-a-donner');
         const divRecevoir = document.getElementById('liste-a-recevoir');
         
-        if (!pote) {
-            resultBox.style.display = 'none';
-            return;
-        }
+        if (!pote) { resultBox.style.display = 'none'; return; }
 
-        document.getElementById('titre-echange').innerText = `🤝 Échanges possibles entre moi et ${pote}`;
-        divDonner.innerHTML = '';
-        divRecevoir.innerHTML = '';
+        document.getElementById('titre-echange').innerText = `🤝 Créer un échange avec ${pote}`;
+        divDonner.innerHTML = ''; divRecevoir.innerHTML = '';
 
-        let canGive = [];
-        let canReceive = [];
+        let canGive = [], canReceive = [];
 
         LISTE_EXCEL.forEach(id => {
             const carteData = sheetDataGlobal[id] || {};
             const maQty = carteData[currentUser] || 0;
             const saQty = carteData[pote] || 0;
 
-            if (maQty >= 2 && saQty === 0) {
-                canGive.push(`${id} (x${maQty - 1})`);
-            }
-            if (saQty >= 2 && maQty === 0) {
-                canReceive.push(`${id}`);
-            }
+            if (maQty >= 2 && saQty === 0) canGive.push(id);
+            if (saQty >= 2 && maQty === 0) canReceive.push(id);
         });
 
-        if (canGive.length === 0) divDonner.innerHTML = '<p style="color: gray; font-style: italic;">Aucun doublon à lui donner.</p>';
-        else canGive.forEach(item => divDonner.innerHTML += `<span class="badge" style="background:#fed7d7; color:#9b2c2c;">${item}</span>`);
+        if (canGive.length === 0) {
+            divDonner.innerHTML = '<p style="color: gray; font-style: italic;">Aucun doublon à lui donner.</p>';
+        } else {
+            canGive.forEach(id => {
+                divDonner.innerHTML += `
+                    <div class="exch-item">
+                        <input type="checkbox" class="chk-give" value="${id}" onchange="gererActivationBoutonEchange()">
+                        <span>${id}</span>
+                    </div>`;
+            });
+        }
 
-        if (canReceive.length === 0) divRecevoir.innerHTML = '<p style="color: gray; font-style: italic;">Il n\'a aucun doublon qui te manque.</p>';
-        else canReceive.forEach(item => divRecevoir.innerHTML += `<span class="badge" style="background:#c6f6d5; color:#22543d;">${item}</span>`);
+        if (canReceive.length === 0) {
+            divRecevoir.innerHTML = '<p style="color: gray; font-style: italic;">Il n\'a aucun doublon qui te manque.</p>';
+        } else {
+            canReceive.forEach(id => {
+                divRecevoir.innerHTML += `
+                    <div class="exch-item">
+                        <input type="checkbox" class="chk-receive" value="${id}" onchange="gererActivationBoutonEchange()">
+                        <span>${id}</span>
+                    </div>`;
+            });
+        }
 
         resultBox.style.display = 'block';
+        gererActivationBoutonEchange();
+    }
+
+    function gererActivationBoutonEchange() {
+        const gives = document.querySelectorAll('.chk-give:checked').length;
+        const receives = document.querySelectorAll('.chk-receive:checked').length;
+        document.getElementById('btn-soumettre-echange').disabled = (gives === 0 && receives === 0);
+    }
+
+    function proposerEchangeAttente() {
+        const pote = document.getElementById('pote-select').value;
+        if(!pote) return;
+
+        const donnees = Array.from(document.querySelectorAll('.chk-give:checked')).map(cb => cb.value);
+        const recues = Array.from(document.querySelectorAll('.chk-receive:checked')).map(cb => cb.value);
+
+        if(!confirm(`Envoyer cette proposition à ${pote} ? L'échange restera suspendu tant qu'il n'aura pas validé de son côté.`)) return;
+
+        const btn = document.getElementById('btn-soumettre-echange');
+        btn.disabled = true;
+        btn.innerText = "⏳ Envoi de la proposition...";
+
+        const extraParams = `&pote=${encodeURIComponent(pote)}&donnees=${encodeURIComponent(donnees.join(','))}&recues=${encodeURIComponent(recues.join(','))}`;
+        
+        executerAppelJSONP("proposerEchange", null, (data) => {
+            alert(`📨 Proposition envoyée ! Préviens ${pote} qu'il doit ouvrir l'appli pour l'accepter.`);
+            btn.innerText = "📩 Envoyer la proposition d'échange";
+            document.getElementById('pote-select').value = "";
+            document.getElementById('resultat-echange').style.display = 'none';
+            chargerDonneesDepuisExcel();
+        }, extraParams);
+    }
+
+    function afficherDemandesEnAttente() {
+        const divContainer = document.getElementById('liste-en-attente');
+        divContainer.innerHTML = '';
+
+        if(echangesEnAttenteGlobal.length === 0) {
+            divContainer.innerHTML = '<p style="color: gray; font-style: italic;">Aucun échange en attente pour le moment.</p>';
+            return;
+        }
+
+        echangesEnAttenteGlobal.forEach(exch => {
+            const card = document.createElement('div');
+            card.className = "pending-card";
+            
+            const txtDonnees = exch.donnees ? exch.donnees.split(',').join(', ') : 'Rien';
+            const txtRecues = exch.recues ? exch.recues.split(',').join(', ') : 'Rien';
+
+            // Cas 1 : L'UTILISATEUR DOIT VALIDER (Il est le receveur)
+            if(exch.receveur === currentUser) {
+                card.innerHTML = `
+                    <h5>⚠️ Proposition de ${exch.demandeur}</h5>
+                    <div class="pending-details">
+                        🎁 <strong>Il te donne :</strong> <span style="color:#2ecc71;">${txtDonnees}</span><br>
+                        🎯 <strong>Tu lui donnes en échange :</strong> <span style="color:#e74c3c;">${txtRecues}</span>
+                    </div>
+                    <div class="pending-actions">
+                        <button class="btn-accept" onclick="traiterEchange('${exch.id}', 'Accepte')">✅ Accepter (Appliquer au classeur)</button>
+                        <button class="btn-refuse" onclick="traiterEchange('${exch.id}', 'Refuse')">❌ Refuser</button>
+                    </div>
+                `;
+            } 
+            // Cas 2 : L'UTILISATEUR ATTEND LA RÉPONSE DE SON POTE (Il est le demandeur)
+            else if(exch.demandeur === currentUser) {
+                card.innerHTML = `
+                    <h5>⏳ Proposition envoyée à ${exch.receveur}</h5>
+                    <div class="pending-details">
+                        🎁 <strong>Tu lui donnes :</strong> ${txtDonnees}<br>
+                        🎯 <strong>Tu vas recevoir :</strong> ${txtRecues}<br>
+                        <span style="color:#e67e22; font-weight:bold;">Status : En attente de sa validation...</span>
+                    </div>
+                `;
+            }
+            divContainer.appendChild(card);
+        });
+    }
+
+    function traiterEchange(exchId, decision) {
+        statusMsg.className = "status";
+        statusMsg.innerText = "⏳ Traitement de la transaction sur l'Excel...";
+        
+        const extraParams = `&exchId=${encodeURIComponent(exchId)}&decision=${encodeURIComponent(decision)}`;
+        
+        executerAppelJSONP("traiterEchange", null, (data) => {
+            if(data && data.success) {
+                alert(decision === 'Accepte' ? "🔥 Échange validé ! Tes stocks et tes stats sont mis à jour." : "Échange refusé.");
+                chargerDonneesDepuisExcel();
+            } else {
+                alert("Erreur lors du traitement de l'échange.");
+                chargerDonneesDepuisExcel();
+            }
+        }, extraParams);
     }
 </script>
 
