@@ -48,10 +48,13 @@
         .btn-valider-echange:hover { background-color: #d35400; }
         .btn-valider-echange:disabled { background-color: #bdc3c7; cursor: not-allowed; }
 
-        /* 📑 Boites de demandes en attente */
-        .pending-container { margin-top: 30px; border-top: 2px dashed #bdc3c7; padding-top: 20px; }
+        /* 📥 Boites de demandes en attente et historique */
+        .pending-container, .history-container { margin-top: 30px; border-top: 2px dashed #bdc3c7; padding-top: 20px; }
+        .history-container { border-top: 2px solid #2ecc71; }
         .pending-card { background: #fffdf5; border: 1px solid #f1c40f; padding: 15px; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .pending-card.accepted-card { background: #f4fbf7; border: 1px solid #2ecc71; }
         .pending-card h5 { margin: 0 0 10px 0; font-size: 16px; color: #d35400; }
+        .pending-card.accepted-card h5 { color: #27ae60; }
         .pending-details { font-size: 14px; margin-bottom: 10px; line-height: 1.4; }
         .pending-actions { display: flex; gap: 10px; }
         .btn-accept { background-color: #2ecc71; padding: 8px 15px; font-size: 14px; color: white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; }
@@ -146,12 +149,19 @@
                     <p style="color: gray; font-style: italic;">Aucun échange en attente pour le moment.</p>
                 </div>
             </div>
+
+            <div class="history-container">
+                <h4>✅ Échanges validés (À préparer !)</h4>
+                <div id="liste-historique">
+                    <p style="color: gray; font-style: italic;">Aucun échange validé pour l'instant.</p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgg-_AMZvlSPvxVFQALt5_PwXAQTBfcmrcPdNVPx__NJWyH8to7oRmgXMst3ti6ZY6/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
     let cardsData = [];   
@@ -239,6 +249,8 @@
             if(data && data.success) {
                 sheetDataGlobal = data.cards;
                 listePotes = data.users;
+                
+                // On récupère TOUS les échanges (en attente + acceptés) renvoyés par l'Excel
                 echangesEnAttenteGlobal = data.echanges || [];
                 
                 cardsData.forEach(card => {
@@ -249,7 +261,7 @@
                 
                 renderTable();
                 construireSelectPotes();
-                afficherDemandesEnAttente();
+                afficherDemandesEnAttenteEtHistorique();
                 
                 statusMsg.className = "status success";
                 statusMsg.innerText = "✅ Données synchronisées avec l'Excel !";
@@ -444,49 +456,82 @@
         }, extraParams);
     }
 
-    function afficherDemandesEnAttente() {
-        const divContainer = document.getElementById('liste-en-attente');
-        divContainer.innerHTML = '';
+    function afficherDemandesEnAttenteEtHistorique() {
+        const divAttente = document.getElementById('liste-en-attente');
+        const divHistorique = document.getElementById('liste-historique');
+        
+        divAttente.innerHTML = '';
+        divHistorique.innerHTML = '';
 
-        if(echangesEnAttenteGlobal.length === 0) {
-            divContainer.innerHTML = '<p style="color: gray; font-style: italic;">Aucun échange en attente pour le moment.</p>';
-            return;
-        }
+        let countAttente = 0;
+        let countHistorique = 0;
 
         echangesEnAttenteGlobal.forEach(exch => {
-            const card = document.createElement('div');
-            card.className = "pending-card";
-            
             const txtDonnees = exch.donnees ? exch.donnees.split(',').join(', ') : 'Rien';
             const txtRecues = exch.recues ? exch.recues.split(',').join(', ') : 'Rien';
 
-            // Cas 1 : L'UTILISATEUR DOIT VALIDER (Il est le receveur)
-            if(exch.receveur === currentUser) {
-                card.innerHTML = `
-                    <h5>⚠️ Proposition de ${exch.demandeur}</h5>
-                    <div class="pending-details">
-                        🎁 <strong>Il te donne :</strong> <span style="color:#2ecc71;">${txtDonnees}</span><br>
-                        🎯 <strong>Tu lui donnes en échange :</strong> <span style="color:#e74c3c;">${txtRecues}</span>
-                    </div>
-                    <div class="pending-actions">
-                        <button class="btn-accept" onclick="traiterEchange('${exch.id}', 'Accepte')">✅ Accepter (Appliquer au classeur)</button>
-                        <button class="btn-refuse" onclick="traiterEchange('${exch.id}', 'Refuse')">❌ Refuser</button>
-                    </div>
-                `;
+            // CAS 1 : L'ÉCHANGE EST TOUJOURS EN ATTENTE
+            if (exch.statut === "En attente") {
+                countAttente++;
+                const card = document.createElement('div');
+                card.className = "pending-card";
+
+                if (exch.receveur === currentUser) {
+                    card.innerHTML = `
+                        <h5>⚠️ Proposition de ${exch.demandeur}</h5>
+                        <div class="pending-details">
+                            🎁 <strong>Il te donne :</strong> <span style="color:#2ecc71; font-weight:bold;">${txtDonnees}</span><br>
+                            🎯 <strong>Tu lui donnes :</strong> <span style="color:#e74c3c; font-weight:bold;">${txtRecues}</span>
+                        </div>
+                        <div class="pending-actions">
+                            <button class="btn-accept" onclick="traiterEchange('${exch.id}', 'Accepte')">✅ Accepter</button>
+                            <button class="btn-refuse" onclick="traiterEchange('${exch.id}', 'Refuse')">❌ Refuser</button>
+                        </div>`;
+                } else if (exch.demandeur === currentUser) {
+                    card.innerHTML = `
+                        <h5>⏳ Envoyé à ${exch.receveur}</h5>
+                        <div class="pending-details">
+                            🎁 <strong>Tu lui donnes :</strong> ${txtDonnees}<br>
+                            🎯 <strong>Tu reçois :</strong> ${txtRecues}<br>
+                            <span style="color:#e67e22; font-weight:bold;">Statut : En attente de sa validation...</span>
+                        </div>`;
+                }
+                divAttente.appendChild(card);
             } 
-            // Cas 2 : L'UTILISATEUR ATTEND LA RÉPONSE DE SON POTE (Il est le demandeur)
-            else if(exch.demandeur === currentUser) {
-                card.innerHTML = `
-                    <h5>⏳ Proposition envoyée à ${exch.receveur}</h5>
-                    <div class="pending-details">
-                        🎁 <strong>Tu lui donnes :</strong> ${txtDonnees}<br>
-                        🎯 <strong>Tu vas recevoir :</strong> ${txtRecues}<br>
-                        <span style="color:#e67e22; font-weight:bold;">Status : En attente de sa validation...</span>
-                    </div>
-                `;
+            
+            // CAS 2 : L'ÉCHANGE EST ACCEPTÉ -> ON L'AFFICHE DANS L'HISTORIQUE DE PRÉPARATION
+            else if (exch.statut === "Accepté") {
+                countHistorique++;
+                const card = document.createElement('div');
+                card.className = "pending-card accepted-card";
+                
+                if (exch.demandeur === currentUser) {
+                    // C'est moi qui ai proposé à la base
+                    card.innerHTML = `
+                        <h5>🤝 Échange validé avec ${exch.receveur}</h5>
+                        <div class="pending-details">
+                            📦 <strong style="color:#e74c3c;">TU DOIS LUI PRÉPARER :</strong> <strong>${txtDonnees}</strong><br>
+                            🎯 <strong style="color:#2ecc71;">IL DOIT TE CONFIER :</strong> <strong>${txtRecues}</strong>
+                        </div>`;
+                } else {
+                    // C'est le pote qui m'avait proposé le deal
+                    card.innerHTML = `
+                        <h5>🤝 Échange validé avec ${exch.demandeur}</h5>
+                        <div class="pending-details">
+                            📦 <strong style="color:#e74c3c;">TU DOIS LUI PRÉPARER :</strong> <strong>${txtRecues}</strong><br>
+                            🎯 <strong style="color:#2ecc71;">IL DOIT TE CONFIER :</strong> <strong>${txtDonnees}</strong>
+                        </div>`;
+                }
+                divHistorique.appendChild(card);
             }
-            divContainer.appendChild(card);
         });
+
+        if (countAttente === 0) {
+            divAttente.innerHTML = '<p style="color: gray; font-style: italic;">Aucun échange en attente pour le moment.</p>';
+        }
+        if (countHistorique === 0) {
+            divHistorique.innerHTML = '<p style="color: gray; font-style: italic;">Aucun échange validé pour l\'instant.</p>';
+        }
     }
 
     function traiterEchange(exchId, decision) {
@@ -497,7 +542,7 @@
         
         executerAppelJSONP("traiterEchange", null, (data) => {
             if(data && data.success) {
-                alert(decision === 'Accepte' ? "🔥 Échange validé ! Tes stocks et tes stats sont mis à jour." : "Échange refusé.");
+                alert(decision === 'Accepte' ? "🔥 Échange validé ! C'est enregistré dans l'historique de préparation." : "Échange refusé.");
                 chargerDonneesDepuisExcel();
             } else {
                 alert("Erreur lors du traitement de l'échange.");
