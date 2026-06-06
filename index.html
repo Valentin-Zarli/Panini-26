@@ -13,6 +13,15 @@
         .tab-btn.active { background-color: #3498db; color: white; }
         .status { font-style: italic; color: #7f8c8d; margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-left: 4px solid #3498db; border-radius: 4px; }
         .status.success { border-left-color: #2ecc71; color: #27ae60; }
+        
+        /* 📊 Style du Tableau de Bord des Stats */
+        .stats-dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+        @media(min-width: 500px) { .stats-dashboard { grid-template-columns: repeat(4, 1fr); } }
+        .stat-card { background: #f8f9fa; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .stat-card .num { font-size: 22px; font-weight: bold; color: #2c3e50; display: block; margin-top: 4px; }
+        .stat-card.pct .num { color: #2ecc71; }
+        .stat-card.manquantes .num { color: #e74c3c; }
+
         #login-screen { text-align: center; padding: 40px 20px; }
         input[type="text"], select { padding: 10px; font-size: 16px; border: 2px solid #bdc3c7; border-radius: 4px; width: 220px; margin-right: 10px; }
         button { background-color: #3498db; color: white; border: none; padding: 11px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; }
@@ -32,7 +41,7 @@
         .exchange-col.give { border-left-color: #e74c3c; }
         .exchange-col.receive { border-left-color: #2ecc71; }
         .badge { display: inline-block; background: #edf2f7; padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: bold; margin: 4px; border: 1px solid #cbd5e0; }
-        .table-wrapper { max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; }
+        .table-wrapper { max-height: 500px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -56,11 +65,30 @@
         <div id="status-msg" class="status">🔄 Connexion sécurisée au Google Sheet...</div>
 
         <div id="view-collection">
+            <div class="stats-dashboard">
+                <div class="stat-card">
+                    <small>Total Cartes</small>
+                    <span class="num" id="stat-total-possedees">0</span>
+                </div>
+                <div class="stat-card manquantes">
+                    <small>Manquantes</small>
+                    <span class="num" id="stat-manquantes">0</span>
+                </div>
+                <div class="stat-card">
+                    <small>Mes Doubles</small>
+                    <span class="num" id="stat-doubles">0</span>
+                </div>
+                <div class="stat-card pct">
+                    <small>% Remplissage</small>
+                    <span class="num" id="stat-pourcentage">0%</span>
+                </div>
+            </div>
+
             <div class="table-wrapper">
                 <table id="table-cards">
                     <thead>
                         <tr>
-                            <th>Num de la Carte</th>
+                            <th>Nom de la Carte</th>
                             <th>Ma Quantité</th>
                             <th>Actions</th>
                         </tr>
@@ -95,12 +123,12 @@
 </div>
 
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgg-_AMZvlSPvxVFQALt5_PwXAQTBfcmrcPdNVPx__NJWyH8to7oRmgXMst3ti6ZY6/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7dpx-lUBL-n05FeNKgXkAUt2TdkXWw5cOObQoYVFZQly_j0JFZvv70ejI41ib4EW4/exec";
     
     let currentUser = "";
     let cardsData = [];   
     let listePotes = [];  
-    let sheetDataGlobal = {}; // Contiendra toutes les quantités de tout le monde en direct depuis le Sheet
+    let sheetDataGlobal = {};
 
     const loginScreen = document.getElementById('login-screen');
     const appScreen = document.getElementById('app-screen');
@@ -170,17 +198,14 @@
         appScreen.style.display = 'block';
         welcomeMsg.innerText = `🃏 Espace de ${currentUser}`;
         
-        // Initialise la structure locale temporaire
         cardsData = LISTE_EXCEL.map(id => ({ id: id, qty: 0 }));
         renderTable();
         
-        // Lance le chargement JSONP en direct depuis l'Excel
         executerAppelJSONP("charger", null, (data) => {
             if(data && data.success) {
                 sheetDataGlobal = data.cards;
                 listePotes = data.users;
                 
-                // Met à jour les quantités affichées avec les vraies valeurs du Sheet
                 cardsData.forEach(card => {
                     if(sheetDataGlobal[card.id] && sheetDataGlobal[card.id][currentUser] !== undefined) {
                         card.qty = sheetDataGlobal[card.id][currentUser];
@@ -219,8 +244,43 @@
         if(tab === 'echanges') calculerEchanges();
     }
 
+    function mettreAJourStatistiques() {
+        let totalUniquesPossedees = 0; 
+        let totalToutesCartes = 0;       
+        let totalDoubles = 0;
+        let totalManquantes = 0;
+        const nombreTotalDeCartesDuClasseur = LISTE_EXCEL.length;
+
+        cardsData.forEach(card => {
+            if (card.qty > 0) {
+                totalUniquesPossedees++;
+                totalToutesCartes += card.qty;
+                if (card.qty > 1) {
+                    totalDoubles += (card.qty - 1);
+                }
+            } else {
+                totalManquantes++;
+            }
+        });
+
+        let pourcentageRemplissage = 0;
+        if (nombreTotalDeCartesDuClasseur > 0) {
+            pourcentageRemplissage = Math.round((totalUniquesPossedees / nombreTotalDeCartesDuClasseur) * 100);
+        }
+
+        // Rendu dans l'interface HTML
+        document.getElementById('stat-total-possedees').innerText = `${totalUniquesPossedees} / ${nombreTotalDeCartesDuClasseur}`;
+        document.getElementById('stat-manquantes').innerText = totalManquantes;
+        document.getElementById('stat-doubles').innerText = totalDoubles;
+        document.getElementById('stat-pourcentage').innerText = `${pourcentageRemplissage}%`;
+    }
+
     function renderTable() {
         tableBody.innerHTML = '';
+        
+        // Relance le calcul des statistiques globales
+        mettreAJourStatistiques();
+
         cardsData.forEach((card) => {
             const tr = document.createElement('tr');
             const minusDisabled = card.qty <= 0 ? 'disabled' : '';
@@ -250,17 +310,27 @@
         btnPlus.disabled = true;
         btnMinus.disabled = true;
 
+        // Débloque en cas de lenteur Google
+        const timeoutSecurite = setTimeout(() => {
+            btnPlus.disabled = false;
+            btnMinus.disabled = (parseInt(qtySpan.innerText, 10) <= 0);
+        }, 4000);
+
         executerAppelJSONP(action, cardId, (data) => {
+            clearTimeout(timeoutSecurite);
+            
             if(data && data.success) {
                 qtySpan.innerText = data.newQty;
                 let card = cardsData.find(c => c.id === cardId);
                 if(card) card.qty = data.newQty;
                 
-                // Met à jour la mémoire globale pour le comparateur
                 if(!sheetDataGlobal[cardId]) sheetDataGlobal[cardId] = {};
                 sheetDataGlobal[cardId][currentUser] = data.newQty;
+                
+                // Recalcul instantané des compteurs
+                mettreAJourStatistiques();
             } else {
-                alert("Erreur de synchronisation avec l'Excel.");
+                alert("Erreur de synchronisation.");
             }
             btnPlus.disabled = false;
             btnMinus.disabled = (parseInt(qtySpan.innerText, 10) <= 0);
